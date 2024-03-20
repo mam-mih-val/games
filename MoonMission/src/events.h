@@ -57,18 +57,27 @@ struct Window{
   std::mutex mutex{};
 };
 
+
+struct Exit{
+  bool exit{false};
+  std::mutex mutex{};
+};
+
+
 class EventManager{
 public:
   static ControlQueue control_queue;
   static CameraQueue camera_queue;
   static State physics_state;
   static Window window;
+  static Exit exit;
 };
 
 ControlQueue EventManager::control_queue = ControlQueue{};
 CameraQueue EventManager::camera_queue = CameraQueue{};
 State EventManager::physics_state = State{};
 Window EventManager::window = Window{};
+Exit EventManager::exit = Exit{};
 
 
 #endif // EVENTS_H

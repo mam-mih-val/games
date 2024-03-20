@@ -214,7 +214,7 @@ private:
 
 class GraphicEngine{
 public:
-  GraphicEngine(  ) {}
+  GraphicEngine() {}
   GraphicEngine& ChangeBackground( Scene s ){ background_ = s; return *this; }
   
   void DrawFrame( Scene& frame ){

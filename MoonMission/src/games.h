@@ -37,6 +37,13 @@ public:
       auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
       EventManager::window.window.pollEvent(event_);
     }
+    
+    if( event_.type == sf::Event::Closed ){
+      auto lock = std::lock_guard< std::mutex >{ EventManager::exit.mutex };
+      EventManager::exit.exit = true;
+      return;
+    }
+
     {
       auto lock_control = std::lock_guard<std::mutex>{EventManager::control_queue.mutex};
       auto lock_camera = std::lock_guard<std::mutex>{EventManager::camera_queue.mutex};
@@ -96,23 +103,34 @@ public:
   
   void PlayGame(){
     auto thread_input = std::thread( [this](){
-      while(true){
+      auto closed = false;
+      while(!closed){
         input_manager_.Listen();
-        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        std::this_thread::sleep_for(std::chrono::milliseconds(5 ));
+        auto lock = std::lock_guard(EventManager::exit.mutex);
+        closed = EventManager::exit.exit;
       }
     } );    
     auto thread_physics = std::thread( [this](){
-      while(true){
-        physics_.Update(1);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+      auto closed = false;
+      while(!closed){
+        physics_.Update(dT);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        auto lock = std::lock_guard(EventManager::exit.mutex);
+        closed = EventManager::exit.exit;
       }
     } );
     auto thread_render = std::thread( [this](){
-      while(true){
+      auto closed = false;
+      while(!closed){
         render_engine_.Render();
+        auto lock = std::lock_guard(EventManager::exit.mutex);
+        closed = EventManager::exit.exit;
       }
     } );
-    while(true){}
+    thread_input.join();
+    thread_physics.join();
+    thread_render.join();
   }
 private:
   Physics::Physics physics_;
