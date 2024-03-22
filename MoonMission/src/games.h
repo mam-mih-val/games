@@ -20,122 +20,80 @@
 #include <thread>
 
 #include "coordinates.h"
-#include "events.h"
+#include "input.h"
+#include "window.h"
 #include "graphics.h"
 #include "physics.h"
 #include "render.h"
 
-// #include <X11/Xlib.h>
-
 constexpr double dT = 1; 
 
-class InputManager{
-public:
-  InputManager() {}
-  void Listen(){
-    {
-      auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-      EventManager::window.window.pollEvent(event_);
-    }
-    
-    if( event_.type == sf::Event::Closed ){
-      auto lock = std::lock_guard< std::mutex >{ EventManager::exit.mutex };
-      EventManager::exit.exit = true;
-      return;
-    }
-
-    {
-      auto lock_control = std::lock_guard<std::mutex>{EventManager::control_queue.mutex};
-      auto lock_camera = std::lock_guard<std::mutex>{EventManager::camera_queue.mutex};
-      if( event_.type == sf::Event::KeyPressed ){
-        switch (event_.key.scancode) {
-          case sf::Keyboard::Scancode::Space:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::ACCELERATE} );
-            break;
-          case sf::Keyboard::Scancode::LShift:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::DECELERATE} );
-            break;
-          case sf::Keyboard::Scancode::W:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::TURN_UP} );
-            break;
-          case sf::Keyboard::Scancode::S:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::TURN_UP} );
-            break;
-          case sf::Keyboard::Scancode::D:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::TURN_RIGHT} );
-            break;
-          case sf::Keyboard::Scancode::A:
-            EventManager::control_queue.events.push( {ControlEvent::ControlCommand::TURN_LEFT} );
-            break;
-          case sf::Keyboard::Scancode::C:
-            EventManager::camera_queue.events.push( {CameraEvent::ControlCommand::ZOOM_OUT} );
-            break;
-          case sf::Keyboard::Scancode::V:
-            EventManager::camera_queue.events.push( {CameraEvent::ControlCommand::ZOOM_IN} );
-            break;
-          case sf::Keyboard::Scancode::M:
-            EventManager::camera_queue.events.push( {CameraEvent::ControlCommand::FOCUS_ON_MOON} );
-            break;
-          case sf::Keyboard::Scancode::E:
-            EventManager::camera_queue.events.push( {CameraEvent::ControlCommand::FOCUS_ON_EARTH} );
-            break;
-          default:
-            break;
-        }
-      }
-    }
-  }
-
-private:
-  sf::Event event_{};
-};
 
 class Game{
 public:
   Game( Physics::Physics _physics ) : 
     physics_{_physics},
+    analytics_{physics_},
     render_engine_{},
-    input_manager_{} {}
+    input_manager_{} 
+  {
+    physics_.RegisterCallback( render_engine_.MakeCallbackPhysics() );
+    physics_.RegisterCallback( analytics_.MakeCallbackPhysics() );
+    analytics_.RegisterCallback( render_engine_.MakeCallbackAnalytics() );
+
+    input_manager_.RegisterCallback( physics_.MakeCallbackGameInput() );
+    input_manager_.RegisterCallback( render_engine_.MakeCallbackGameInput() );
+  }
   Game( const Game& ) = default;
   Game( Game&& ) = default;
   Game& operator=( const Game& ) = default;
   Game& operator=( Game&& ) = default;
   
   void PlayGame(){
+    
+
     auto thread_input = std::thread( [this](){
       auto closed = false;
       while(!closed){
         input_manager_.Listen();
-        std::this_thread::sleep_for(std::chrono::milliseconds(5 ));
-        auto lock = std::lock_guard(EventManager::exit.mutex);
-        closed = EventManager::exit.exit;
+        closed = WindowManager::exit;
       }
     } );    
     auto thread_physics = std::thread( [this](){
       auto closed = false;
       while(!closed){
-        physics_.Update(dT);
+        auto update_time = WindowManager::pause ? 0.0 : dT;
+        physics_.Update(update_time);
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        auto lock = std::lock_guard(EventManager::exit.mutex);
-        closed = EventManager::exit.exit;
+        closed = WindowManager::exit;
       }
     } );
     auto thread_render = std::thread( [this](){
       auto closed = false;
       while(!closed){
         render_engine_.Render();
-        auto lock = std::lock_guard(EventManager::exit.mutex);
-        closed = EventManager::exit.exit;
+        closed = WindowManager::exit;
+      }
+    } );
+    auto thread_analytics = std::thread( [this](){
+      auto closed = false;
+      while(!closed){
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        analytics_.Calculate(10*dT, 50);
+        closed = WindowManager::exit;
       }
     } );
     thread_input.join();
     thread_physics.join();
     thread_render.join();
+    thread_analytics.join();
   }
 private:
   Physics::Physics physics_;
+  Physics::Analytics analytics_;
   Render::RenderEngine render_engine_;
-  InputManager input_manager_;
+  GameInput input_manager_;
 };
 
 inline auto MakeInterlanetaryGame(){

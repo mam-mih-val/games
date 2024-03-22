@@ -105,12 +105,21 @@ struct Point2D{
     return f.x*s.x + f.y*s.y;
   }
   friend double Angle( Point2D f, Point2D s ){
-    auto cos_theta = Dot(f, s) / f.Mag() / s.Mag();
+    auto f_mag = f.Mag();
+    auto s_mag = s.Mag();
+    auto dot_product = Dot(f, s);
+    if( fabs(f_mag) < std::numeric_limits<double>::epsilon() )
+      return 0;
+    if( fabs(s_mag) < std::numeric_limits<double>::epsilon() )
+      return 0;
+    if( fabs(dot_product - 1.0) < std::numeric_limits<double>::epsilon() )
+      return 0;
+    auto cos_theta = dot_product / f_mag / s_mag;
     return acos( cos_theta );
   }
 };
 
-std::array< std::array<double, 2>, 2> MakeRotationMatrix(double theta){
+inline std::array< std::array<double, 2>, 2> MakeRotationMatrix(double theta){
   auto cos_theta = cos( theta );
     auto sin_theta = sin( theta );
     auto matrix = std::array<std::array<double, 2>, 2>{

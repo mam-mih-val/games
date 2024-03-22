@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstddef>
 #include <ctime>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -25,7 +26,7 @@
 #include <SFML/Graphics/Color.hpp>
 
 #include "coordinates.h"
-#include "events.h"
+#include "window.h"
 
 namespace Graphics{
 
@@ -118,6 +119,8 @@ public:
     return *this;
   }
   Composition& RotateCM( double angle ){
+    if( fabs(angle) < std::numeric_limits<double>::epsilon() )
+      return *this;
     PerformOnEach( [this, angle]( auto& p ){ p.Rotate(center_mass_, angle); } );
     auto matrix = MakeRotationMatrix(angle);
     orientation_ *= matrix; 
@@ -125,6 +128,10 @@ public:
   }
   Composition& Align( Point2D vector ){
     auto angle = Angle(orientation_, vector);
+    if( fabs(angle) < std::numeric_limits<double>::epsilon() )
+      return *this;
+    if( std::isnan(angle) )
+      return *this;
     RotateCM(angle);
     return *this;
   }
@@ -197,16 +204,21 @@ public:
     auto shapes = comp.GetImages();
     shapes_buffer_.insert(shapes_buffer_.end(), shapes.begin(), shapes.end());
   }
+  
   void AddToBuffer( std::vector<Composition> comp ){
     for( auto& c : comp ){
       AddToFrame(c);
     }
   }
+
   const std::vector<sf::ConvexShape>& GetBuffer(){    
     return shapes_buffer_;
   }
+  
   void ClearBuffer(){ shapes_buffer_.clear(); }
-  sf::View& GetCamera(){ return camera_; }
+  
+  sf::View& GetView(){ return camera_; }
+  void SetView( const sf::View& camera ){ camera_ = camera; }
 private:
   sf::View camera_{};
   std::vector<sf::ConvexShape> shapes_buffer_;
@@ -218,13 +230,13 @@ public:
   GraphicEngine& ChangeBackground( Scene s ){ background_ = s; return *this; }
   
   void DrawFrame( Scene& frame ){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
     auto vec_shapes = frame.GetBuffer();
     std::for_each( vec_shapes.begin(), vec_shapes.end(), []( auto& s ){ 
       s.setFillColor( sf::Color::Black );
-      EventManager::window.window.draw( s ); 
+      WindowManager::window.window.draw( s ); 
     } );
-    EventManager::window.window.setView( frame.GetCamera() );
+    WindowManager::window.window.setView( frame.GetView() );
     frame.ClearBuffer();
   }
   void DrawData(){
@@ -235,37 +247,37 @@ public:
     text.setFillColor(sf::Color::Red);
   }
   void DrawBackground(){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-    EventManager::window.window.clear( sf::Color::White );
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
+    WindowManager::window.window.clear( sf::Color::White );
     auto vec_shapes = std::vector<sf::ConvexShape>{};
     std::for_each( vec_shapes.begin(), vec_shapes.end(), []( auto& s ){ 
       s.setFillColor( sf::Color::Black );
-      EventManager::window.window.draw( s ); 
+      WindowManager::window.window.draw( s ); 
     } );
   }
   void Display(){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-    EventManager::window.window.display();
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
+    WindowManager::window.window.display();
   }
   bool RenderFrame(){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-    if( !EventManager::window.window.isOpen() )
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
+    if( !WindowManager::window.window.isOpen() )
       return false;
     sf::Event event;
-    EventManager::window.window.pollEvent(event);
+    WindowManager::window.window.pollEvent(event);
     if (event.type == sf::Event::Closed){
-      EventManager::window.window.close();
+      WindowManager::window.window.close();
       return false;
     }
     return true;
   }
   void SetActive(){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-    EventManager::window.window.setActive(true);
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
+    WindowManager::window.window.setActive(true);
   }
   void SetInactive(){
-    auto lock = std::lock_guard<std::mutex>( EventManager::window.mutex );
-    EventManager::window.window.setActive(false);
+    auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
+    WindowManager::window.window.setActive(false);
   }
 private:
   Scene background_;
