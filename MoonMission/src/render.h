@@ -12,7 +12,6 @@
 #include "window.h"
 #include "coordinates.h"
 #include "graphics.h"
-#include "input_commands.h"
 #include "physics.h"
 #include "input.h"
 // #include "graphics.h"
@@ -67,7 +66,11 @@ public:
     UpdateCamera();
 
     for( const auto& point : rocket_trajectory_ ){
-      auto p = Graphics::MakePlanet(point, 5);
+      auto p = Graphics::MakePlanet(point, 2);
+      current_frame_.AddToFrame(p);
+    }
+    for( const auto& point : moon_trajectory_ ){
+      auto p = Graphics::MakePlanet(point, 2);
       current_frame_.AddToFrame(p);
     }
     current_frame_.AddToFrame( moon_img_);
@@ -91,18 +94,21 @@ public:
     };
   }
   auto MakeCallbackAnalytics(){
-    return [this]( std::vector<Point2D> trajectory ){
-      rocket_trajectory_ = trajectory;
+    return [this]( Physics::ComputerState computer_state ){
+      rocket_trajectory_ = computer_state.rocket_trajectory_;
+      moon_trajectory_ = computer_state.moon_trajectory_;
+      earth_trajectory_ = computer_state.earth_trajectory_;
     };
   }
   auto MakeCallbackGameInput(){
-    return [this]( Comands comands ){
+    return [this]( Input::Comands comands ){
       commands_.push( comands.camera_command );
     };
   }
 
 private:
   void UpdateCamera(){ 
+    using namespace Input;
     for( ; !commands_.empty() ; commands_.pop() ){
       switch ( commands_.front().command ) {
         case CameraCommand::CommandType::FOCUS_ON_EARTH:
@@ -143,8 +149,10 @@ private:
   Physics::Body rocket_state_{};
 
   std::vector<Point2D> rocket_trajectory_{};
+  std::vector<Point2D> moon_trajectory_{};
+  std::vector<Point2D> earth_trajectory_{};
   
-  std::queue<CameraCommand> commands_{};
+  std::queue<Input::CameraCommand> commands_{};
 
   Graphics::GraphicEngine graphics_{};
   Graphics::Scene current_frame_{};

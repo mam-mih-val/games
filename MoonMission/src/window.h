@@ -18,8 +18,4 @@ public:
   static std::atomic<bool> pause;
 };
 
-Window WindowManager::window = Window{};
-std::atomic<bool> WindowManager::exit = false;
-std::atomic<bool> WindowManager::pause = false;
-
 #endif // WINDOW_H

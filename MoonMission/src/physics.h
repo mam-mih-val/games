@@ -1,9 +1,11 @@
 #ifndef PHYSICS_H
 #define PHYSICS_H
 
+#include <SFML/Graphics/Color.hpp>
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -16,8 +18,8 @@
 
 #include "coordinates.h"
 #include "window.h"
-#include "input_commands.h"
 #include "input.h"
+
 
 namespace Physics{
 
@@ -107,33 +109,11 @@ public:
   void SetThrust( double val ){ thrust_ = val; }  
   void SetFuelConsumption( double val ){ fuel_consumption_ = val; } 
 
-
   void Update( const Point2D& external_acceleration, double dt ){
     body_.Update(external_acceleration, dt);
   }
-  void Accelerate( double rate, double dt ){
-    if( Empty() ){
-      std::cout << "Empty" << std::endl;
-      return;
-    }
-    auto dir = GetOrintation();
-    auto thrust = GetThrust();
-    fuel_mass_-=fuel_consumption_*dt;
-    std::cout << fuel_mass_ << std::endl;
-    auto acceleration = dir*thrust*rate;
-    body_.Update(acceleration, dt);
-  }
-  void Steer( Point2D dir, double dt ){
-    if( Empty() ){
-      std::cout << "Empty" << std::endl;
-      return;
-    }
-    auto thrust = GetThrust();
-    auto acceleration = dir*thrust;
-    fuel_mass_-=fuel_consumption_*dt;
-    std::cout << fuel_mass_ << std::endl;
-    body_.Update(acceleration, dt);
-  }
+  void Accelerate( double rate, double dt );
+  void Steer( Point2D dir, double dt );
 
 private:
   Body body_;
@@ -151,158 +131,149 @@ struct PhysicsState{
 
 class Physics{
 public:
+  Physics() = default;
+  ~Physics() = default;
+
   const Planet& GetEarth() const { return state_.earth; }
   const Planet& GetMoon() const { return state_.moon; }
   const Rocket& GetRocket() const { return state_.rocket; }
-
+  const PhysicsState& GetState() const { return state_; }
+  
+  void SetState( const PhysicsState& state ){ state_ = state; }
   void SetEarth( const Planet& p ) { state_.earth = p; }
   void SetMoon( const Planet& p ) { state_.moon = p; }
   void SetRocket( const Rocket& r ) { state_.rocket = r; }
 
-  void Update( double dt ){
-    auto earth_rocket = GravitationalAcceleration(state_.earth, state_.rocket.GetPosition());
-    auto earth_moon = GravitationalAcceleration(state_.earth, state_.moon.GetPosition());
-    auto moon_rocket  = GravitationalAcceleration(state_.moon, state_.rocket.GetPosition());
-    auto moon_earth = GravitationalAcceleration(state_.moon, state_.earth.GetPosition());
-
-    state_.earth.Update(moon_earth, dt);
-    state_.moon.Update(earth_moon, dt);
-    state_.rocket.Update(earth_rocket+moon_rocket, dt);
-
-    for( ; !commands_.empty(); commands_.pop() ){
-      switch ( commands_.front().command ) {
-        case SteerCommand::CommandType::ACCELERATE:
-          state_.rocket.Accelerate(1, dt);
-          break;
-        case SteerCommand::CommandType::DECELERATE:
-          state_.rocket.Accelerate(-1, dt);
-          break;
-        case SteerCommand::CommandType::STEER_UP:
-          state_.rocket.Steer( {0, -1}, dt);
-          break;
-        case SteerCommand::CommandType::STEER_DOWN:
-          state_.rocket.Steer( {0, 1}, dt);
-          break;
-        case SteerCommand::CommandType::STEER_LEFT:
-          state_.rocket.Steer( {-1, 0}, dt);
-          break;
-        case SteerCommand::CommandType::STEER_RIGHT:
-          state_.rocket.Steer( {1, 0}, dt);
-          break;
-        default:
-          break;
-      }
-    }
-
-    Notify();
-  }
+  void Update( double dt );
+  
   void RegisterCallback( const std::function<void(PhysicsState state)>& function ) { callbacks_.push_back(function); }
 
   auto MakeCallbackGameInput(){
-    return [this]( Comands comands ) {
-      commands_.push( comands.steer_command );
+    return [this]( Input::Comands comands ) {
+      AddCommand(comands.computer_command);
     };
   }
-
+  auto MakeCallbackComputer(){
+    return [this]( std::vector<Input::ComputerCommand> commands ){ 
+      for( auto c : commands )
+        AddCommand(c);
+    };
+  }
+  void AddCommand(Input::ComputerCommand command){
+    commands_.push(command);
+  }
 private:
+  static std::unique_ptr<Physics> instance_;
+  void ExecuteCommand(double dt);
   void Notify(){
     std::for_each( callbacks_.begin(), callbacks_.end(), [this](const auto& c){
         c( state_ );
     } );
   }
   PhysicsState state_{};
-  std::queue<SteerCommand> commands_{};
+  std::queue<Input::ComputerCommand> commands_;
   std::vector< std::function<void(PhysicsState state)> > callbacks_{};
+
+  std::function<void(PhysicsState)> computer_callback_;
 };
 
-static Physics MakePhysics(){
-  auto earth = Planet();
-  earth.SetMass(1);
-  earth.SetRadius(64);
-  earth.SetPosition( {0.0, 0.0} );
-  earth.SetVelocity( {0.0, 0.0} );
+Physics MakePhysics();
 
-  auto moon = Planet();
-  moon.SetMass(0.012);
-  moon.SetRadius(10);
-  moon.SetPosition({3800, 0.0});
-  moon.SetVelocity( {0.0, GetOrbitalSpeed(earth, 3800)} );
+struct ComputerState{
+  std::vector<Point2D> rocket_trajectory_{};
+  std::vector<Point2D> earth_trajectory_{};
+  std::vector<Point2D> moon_trajectory_{};
+};
 
-  auto rocket = Rocket();
-  rocket.SetBodyMass(1);
-  rocket.SetEngineMass(1);
-  rocket.SetThrust(0.01);
-  rocket.SetFuelMass(10);
-  rocket.SetFuelConsumption(0.001);
-  rocket.SetPosition({0.0, -100});
-  rocket.SetVelocity({ GetOrbitalSpeed(earth, 100), 0.0 });
-
-  auto phys = Physics();
-  phys.SetEarth( earth );
-  phys.SetMoon( moon );
-  phys.SetRocket( rocket );
-
-  return phys;
-}
-
-double CalculateV2( const Planet& planet, const Rocket& rocket ){
-  auto distance = (rocket.GetPosition() - planet.GetPosition()).Mag();
-  auto mass = planet.GetMass();
-  auto v2 = sqrt( 2 * G * mass / distance );
-  return v2;
-}
-
-class Analytics{
+class Computer{
 public:
-  Analytics( const Physics phys ) :
-  earth_( phys.GetEarth() ),
-  moon_( phys.GetMoon() ),
-  rocket_( phys.GetRocket() ) {}
-  
-  void Calculate( double dt, size_t n_steps ){
-    auto distance = (rocket_.GetPosition() - earth_.GetPosition()).Mag();
-    auto rocket_trajectory= std::vector<Point2D>{};
-    rocket_trajectory.reserve(n_steps);
-    for( size_t i=0; i<n_steps; ++i ){
-      Propagate(dt);  
-      rocket_trajectory.push_back( rocket_.GetPosition() );
+  Computer( const Physics& phys ) : initial_state_{phys.GetState()} {  }
+  void AddCommand( Input::ComputerCommand command ){ commands_.push_back(command); }
+  void Analyze(double dt, const std::vector<Input::ComputerCommand>& comands){
+    ClearTrajectories();
+    physics_engine_.SetState(initial_state_);
+    for( auto c : comands ){
+      physics_engine_.AddCommand( c );
+      auto n_steps = c.time;
+      for( int i = 0; i < n_steps; ++i ){
+        physics_engine_.Update(dt);
+        state_.earth_trajectory_.push_back( physics_engine_.GetEarth().GetPosition());
+        state_.moon_trajectory_.push_back( physics_engine_.GetMoon().GetPosition());
+        state_.rocket_trajectory_.push_back( physics_engine_.GetRocket().GetPosition());
+      }
     }
-    auto v2 = sqrt( 2 * G * earth_.GetMass() / distance );
-    std::cout << "v: " << rocket_.GetVelocity().Mag() << " v2: " << v2 << std::endl;
-    Notify( rocket_trajectory );
   }
-  auto MakeCallbackPhysics(){
-    return [this]( PhysicsState state ){
-      earth_ = state.earth;
-      moon_ = state.moon;
-      rocket_ = state.rocket;
+  void Sync( const PhysicsState& state ){ initial_state_ = state; }
+  void ClearCommands(){ commands_.clear(); }
+
+  const auto& GetState() const { return state_; }
+
+  void RegisterCallback(const std::function<void( ComputerState )>& function){ callbacks_.push_back( function ); }
+
+private:
+  void ClearTrajectories(){ 
+    state_.earth_trajectory_.clear();
+    state_.moon_trajectory_.clear();
+    state_.rocket_trajectory_.clear(); 
+  }
+  PhysicsState initial_state_{};
+  Physics physics_engine_{};
+  ComputerState state_{};
+  std::vector<Input::ComputerCommand> commands_;
+  std::vector< std::function<void( ComputerState )> > callbacks_{};
+  
+  std::function<void( std::vector<Input::ComputerCommand> )> callback_physics_;
+};
+
+class GameControl{
+public:
+  GameControl( const Physics& phys ) : physics_{phys}, computer_(phys) {}
+  void UpdatePhysics( double dt ){
+    physics_.Update(dt);
+    NotifyPhysics();
+  }
+  void UpdateAnalysis(double dt){
+    computer_.Analyze(dt, computer_commands_);
+    NotifyComputer();
+  }
+  void Execute(){ std::for_each( computer_commands_.begin(), computer_commands_.end(), [this](const auto& c){ physics_.AddCommand( c ); }); }
+  auto MakeCallbackGameInput(){
+    return [this](Input::Comands commands){
+      if( commands.computer_command.command == Input::ComputerCommand::CommandType::SYNC ){
+        computer_.Sync( physics_.GetState() );
+        return;
+      }
+      if( commands.computer_command.command == Input::ComputerCommand::CommandType::EXECUTE ){
+        Execute();
+        computer_commands_.clear();
+        return;
+      }
+      if( commands.computer_command.command == Input::ComputerCommand::CommandType::CLEAR ){
+        computer_commands_.clear();
+        return;
+      }
+      if( commands.computer_command.command == Input::ComputerCommand::CommandType::REMOVE_LAST ){
+        computer_commands_.pop_back();
+        return;
+      }
+      computer_commands_.push_back(commands.computer_command);
     };
   }
-  void RegisterCallback( const std::function<void(std::vector<Point2D>)>& function ) { callbacks_.push_back(function); }
+  void RegisterPhysicsCallback( const std::function<void(PhysicsState)>& function ){ physics_callbacks.push_back( function ); }
+  void RegisterComputerCallback( const std::function<void(ComputerState)>& function ){ computer_callbacks.push_back( function ); }
 private:
-  void Notify( std::vector<Point2D> trajectory ){
-    std::for_each( callbacks_.begin(), callbacks_.end(), [trajectory](const auto& c){
-        c( trajectory );
-    });
+  void NotifyPhysics(){
+    std::for_each( physics_callbacks.begin(), physics_callbacks.end(), [this]( const auto& c ){ c( physics_.GetState() ); } );
   }
-  void Propagate( double dt ){
-    auto earth_rocket = GravitationalAcceleration(earth_, rocket_.GetPosition());
-    auto earth_moon = GravitationalAcceleration(earth_, moon_.GetPosition());
-    auto moon_rocket  = GravitationalAcceleration(moon_, rocket_.GetPosition());
-    auto moon_earth = GravitationalAcceleration(moon_, earth_.GetPosition());
-
-    earth_.Update(moon_earth, dt);
-    moon_.Update(earth_moon, dt);
-    rocket_.Update(earth_rocket+moon_rocket, dt);
+  void NotifyComputer(){
+    std::for_each( computer_callbacks.begin(), computer_callbacks.end(), [this]( const auto& c ){ c( computer_.GetState() ); } );
   }
-
-  Planet earth_;
-  Planet moon_;
-  Rocket rocket_;
-
-  std::vector< std::function<void( std::vector<Point2D> )> > callbacks_{};
-
+  Physics physics_;
+  Computer computer_;
+  std::vector<Input::ComputerCommand> computer_commands_{};
+  std::vector<std::function<void(PhysicsState)>> physics_callbacks{};
+  std::vector<std::function<void(ComputerState)>> computer_callbacks{};
 };
-
+ 
 }
 #endif // PHYSICS_H
