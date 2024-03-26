@@ -3,10 +3,13 @@ find_package(SFML COMPONENTS graphics audio REQUIRED)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
 
 SET(SRC 
+  src/graphics.cc
   src/physics.cc
   src/window.cc
   src/input.cc
   src/coordinates.cc
+  src/games.cc
+  src/render.cc
 )
 
 add_executable( moon_landing src/main.cc ${SRC})

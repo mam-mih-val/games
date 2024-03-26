@@ -87,6 +87,9 @@ inline bool CheckCollision(const Planet& p,const Point2D& position ){
 
 class Rocket{
 public:
+  Rocket();
+  ~Rocket() = default;
+
   double GetMass() const { return body_.mass + engine_mass_ + fuel_mass_; }
   const Point2D& GetPosition() const { return body_.position; }
   const Point2D& GetVelocity() const { return body_.velocity; }
@@ -146,35 +149,15 @@ public:
 
   void Update( double dt );
   
-  void RegisterCallback( const std::function<void(PhysicsState state)>& function ) { callbacks_.push_back(function); }
-
-  auto MakeCallbackGameInput(){
-    return [this]( Input::Comands comands ) {
-      AddCommand(comands.computer_command);
-    };
-  }
-  auto MakeCallbackComputer(){
-    return [this]( std::vector<Input::ComputerCommand> commands ){ 
-      for( auto c : commands )
-        AddCommand(c);
-    };
-  }
   void AddCommand(Input::ComputerCommand command){
     commands_.push(command);
   }
+  bool Idle(){ return commands_.empty(); }
 private:
   static std::unique_ptr<Physics> instance_;
   void ExecuteCommand(double dt);
-  void Notify(){
-    std::for_each( callbacks_.begin(), callbacks_.end(), [this](const auto& c){
-        c( state_ );
-    } );
-  }
   PhysicsState state_{};
   std::queue<Input::ComputerCommand> commands_;
-  std::vector< std::function<void(PhysicsState state)> > callbacks_{};
-
-  std::function<void(PhysicsState)> computer_callback_;
 };
 
 Physics MakePhysics();
@@ -189,33 +172,14 @@ class Computer{
 public:
   Computer( const Physics& phys ) : initial_state_{phys.GetState()} {  }
   void AddCommand( Input::ComputerCommand command ){ commands_.push_back(command); }
-  void Analyze(double dt, const std::vector<Input::ComputerCommand>& comands){
-    ClearTrajectories();
-    physics_engine_.SetState(initial_state_);
-    for( auto c : comands ){
-      physics_engine_.AddCommand( c );
-      auto n_steps = c.time;
-      for( int i = 0; i < n_steps; ++i ){
-        physics_engine_.Update(dt);
-        state_.earth_trajectory_.push_back( physics_engine_.GetEarth().GetPosition());
-        state_.moon_trajectory_.push_back( physics_engine_.GetMoon().GetPosition());
-        state_.rocket_trajectory_.push_back( physics_engine_.GetRocket().GetPosition());
-      }
-    }
-  }
+  void Analyze(double dt, std::vector<Input::ComputerCommand> comands);
   void Sync( const PhysicsState& state ){ initial_state_ = state; }
   void ClearCommands(){ commands_.clear(); }
-
   const auto& GetState() const { return state_; }
-
   void RegisterCallback(const std::function<void( ComputerState )>& function){ callbacks_.push_back( function ); }
 
 private:
-  void ClearTrajectories(){ 
-    state_.earth_trajectory_.clear();
-    state_.moon_trajectory_.clear();
-    state_.rocket_trajectory_.clear(); 
-  }
+  void ClearTrajectories();
   PhysicsState initial_state_{};
   Physics physics_engine_{};
   ComputerState state_{};
@@ -228,37 +192,10 @@ private:
 class GameControl{
 public:
   GameControl( const Physics& phys ) : physics_{phys}, computer_(phys) {}
-  void UpdatePhysics( double dt ){
-    physics_.Update(dt);
-    NotifyPhysics();
-  }
-  void UpdateAnalysis(double dt){
-    computer_.Analyze(dt, computer_commands_);
-    NotifyComputer();
-  }
-  void Execute(){ std::for_each( computer_commands_.begin(), computer_commands_.end(), [this](const auto& c){ physics_.AddCommand( c ); }); }
-  auto MakeCallbackGameInput(){
-    return [this](Input::Comands commands){
-      if( commands.computer_command.command == Input::ComputerCommand::CommandType::SYNC ){
-        computer_.Sync( physics_.GetState() );
-        return;
-      }
-      if( commands.computer_command.command == Input::ComputerCommand::CommandType::EXECUTE ){
-        Execute();
-        computer_commands_.clear();
-        return;
-      }
-      if( commands.computer_command.command == Input::ComputerCommand::CommandType::CLEAR ){
-        computer_commands_.clear();
-        return;
-      }
-      if( commands.computer_command.command == Input::ComputerCommand::CommandType::REMOVE_LAST ){
-        computer_commands_.pop_back();
-        return;
-      }
-      computer_commands_.push_back(commands.computer_command);
-    };
-  }
+  void UpdatePhysics( double dt ){ physics_.Update(dt); NotifyPhysics(); }
+  void UpdateAnalysis(double dt){ computer_.Analyze(dt, computer_commands_); NotifyComputer(); }
+  void Execute(){ std::for_each( computer_commands_.begin(), computer_commands_.end(), [this](const auto& c){ physics_.AddCommand( c ); }); computer_commands_.clear(); }
+  auto MakeCallbackGameInput() -> std::function<void(Input::Comands)>;
   void RegisterPhysicsCallback( const std::function<void(PhysicsState)>& function ){ physics_callbacks.push_back( function ); }
   void RegisterComputerCallback( const std::function<void(ComputerState)>& function ){ computer_callbacks.push_back( function ); }
 private:

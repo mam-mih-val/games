@@ -38,39 +38,40 @@ void Physics::Update( double dt ){
   state_.rocket.Update(earth_rocket+moon_rocket, dt);
 
   ExecuteCommand(dt);
-
-  Notify();
 }
 
 void Physics::ExecuteCommand(double dt){
   using namespace Input;
-  if( !commands_.empty() ){
-    commands_.front().time -= 1;
-    switch ( commands_.front().command ) {
-      case ComputerCommand::CommandType::ACCELERATE:
-        state_.rocket.Accelerate(1, dt);
-        break;
-      case ComputerCommand::CommandType::DECELERATE:
-        state_.rocket.Accelerate(-1, dt);
-        break;
-      case ComputerCommand::CommandType::STEER_UP:
-        state_.rocket.Steer( {0, -1}, dt);
-        break;
-      case ComputerCommand::CommandType::STEER_DOWN:
-        state_.rocket.Steer( {0, 1}, dt);
-        break;
-      case ComputerCommand::CommandType::STEER_LEFT:
-        state_.rocket.Steer( {-1, 0}, dt);
-        break;
-      case ComputerCommand::CommandType::STEER_RIGHT:
-        state_.rocket.Steer( {1, 0}, dt);
-        break;
-      default:
-        break;
-    }
-    if( commands_.front().time <= 0 )
-      commands_.pop();
+  if( Idle() )
+    return;
+  std::cout << commands_.front().time << "\n";
+  switch ( commands_.front().command ) {
+    case ComputerCommand::CommandType::ACCELERATE:
+      state_.rocket.Accelerate(1, dt);
+      break;
+    case ComputerCommand::CommandType::DECELERATE:
+      state_.rocket.Accelerate(-1, dt);
+      break;
+    case ComputerCommand::CommandType::STEER_UP:
+      state_.rocket.Steer( {0, -1}, dt);
+      break;
+    case ComputerCommand::CommandType::STEER_DOWN:
+      state_.rocket.Steer( {0, 1}, dt);
+      break;
+    case ComputerCommand::CommandType::STEER_LEFT:
+      state_.rocket.Steer( {-1, 0}, dt);
+      break;
+    case ComputerCommand::CommandType::STEER_RIGHT:
+      state_.rocket.Steer( {1, 0}, dt);
+      break;
+    case ComputerCommand::CommandType::NOTHING:
+      break;
+    default:
+      break;
   }
+  commands_.front().time -= dt;
+  if( commands_.front().time <= 0 )
+    commands_.pop();
 }
 
 Physics MakePhysics(){
@@ -101,6 +102,52 @@ Physics MakePhysics(){
   phys.SetRocket( rocket );
 
   return phys;
+}
+
+void Computer::Analyze(double dt, std::vector<Input::ComputerCommand> comands){
+    ClearTrajectories();
+    physics_engine_.SetState(initial_state_);
+    for( auto c : comands ){
+      physics_engine_.AddCommand( c );
+    }
+    while( !physics_engine_.Idle() ){
+      physics_engine_.Update(dt);
+      state_.earth_trajectory_.push_back( physics_engine_.GetEarth().GetPosition());
+      state_.moon_trajectory_.push_back( physics_engine_.GetMoon().GetPosition());
+      state_.rocket_trajectory_.push_back( physics_engine_.GetRocket().GetPosition());
+    }
+  }
+
+void Computer::ClearTrajectories(){ 
+  state_.earth_trajectory_.clear();
+  state_.moon_trajectory_.clear();
+  state_.rocket_trajectory_.clear(); 
+}
+
+auto GameControl::MakeCallbackGameInput() -> std::function<void(Input::Comands)> {
+  return [this](Input::Comands commands){
+    if( commands.computer_command.command == Input::ComputerCommand::CommandType::EMPTY_COMMAND ){
+      return;
+    }
+    if( commands.computer_command.command == Input::ComputerCommand::CommandType::SYNC ){
+      computer_.Sync( physics_.GetState() );
+      return;
+    }
+    if( commands.computer_command.command == Input::ComputerCommand::CommandType::EXECUTE ){
+      Execute();
+      computer_commands_.clear();
+      return;
+    }
+    if( commands.computer_command.command == Input::ComputerCommand::CommandType::CLEAR ){
+      computer_commands_.clear();
+      return;
+    }
+    if( commands.computer_command.command == Input::ComputerCommand::CommandType::REMOVE_LAST ){
+      computer_commands_.pop_back();
+      return;
+    }
+    computer_commands_.push_back(commands.computer_command);
+  };
 }
 
 }

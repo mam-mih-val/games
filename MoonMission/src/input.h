@@ -29,9 +29,10 @@ struct ComputerCommand{
     CLEAR,
     REMOVE_LAST,
     SYNC,
+    EMPTY_COMMAND,
   };
   CommandType command;
-  int time{0};
+  double time{0};
 };
 
 struct CameraCommand{
@@ -57,8 +58,8 @@ public:
   GameInput() {}
   void Listen();
   void RegisterCallback(const std::function<void(Comands)>& function){ callbacks_.push_back( function ); }
-  int ListenTime();
 private:
+  double ListenTime();
   void Notify(){
     std::for_each( callbacks_.begin(), callbacks_.end(), 
       [this](const auto& c){

@@ -13,7 +13,7 @@ void GameInput::Listen(){
     return;
   }
 
-  commands_.computer_command = { ComputerCommand::CommandType::NOTHING, 0 };
+  commands_.computer_command = { ComputerCommand::CommandType::EMPTY_COMMAND, 0 };
   commands_.camera_command = {CameraCommand::CommandType::NOTHING};
 
   if( event_.type == sf::Event::KeyPressed ){
@@ -88,7 +88,7 @@ void GameInput::Listen(){
   }
 }
 
-int GameInput::ListenTime(){
+double GameInput::ListenTime(){
   {
     auto lock = std::lock_guard<std::mutex>( WindowManager::window.mutex );
     WindowManager::window.window.pollEvent(event_);
@@ -99,31 +99,31 @@ int GameInput::ListenTime(){
   }
   switch (event_.key.scancode) {
     case sf::Keyboard::Scancode::Num1:
-      return 10;
+      return 100;
       break;
     case sf::Keyboard::Scancode::Num2:
-      return 20;
+      return 200;
       break;
     case sf::Keyboard::Scancode::Num3:
-      return 30;
+      return 300;
       break;
     case sf::Keyboard::Scancode::Num4:
-      return 40;
+      return 400;
       break;
     case sf::Keyboard::Scancode::Num5:
-      return 50;
+      return 500;
       break;
     case sf::Keyboard::Scancode::Num6:
-      return 60;
+      return 600;
       break;
     case sf::Keyboard::Scancode::Num7:
-      return 70;
+      return 700;
       break;
     case sf::Keyboard::Scancode::Num8:
-      return 80;
+      return 800;
       break;
     case sf::Keyboard::Scancode::Num9:
-      return 90;
+      return 900;
       break;
     default:
       return 0;
