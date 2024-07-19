@@ -1,0 +1,31 @@
+#ifndef RESOURCES_H
+#define RESOURCES_H
+
+#include <memory>
+#include <string.h>
+
+#include <SFML/Graphics/Font.hpp>
+
+#define RESOURSES_DIR "@RESOURSES_DIR"
+
+
+static const std::string resources_dir{ RESOURSES_DIR };
+
+class Resources{
+  static Resources* Instance(){
+    if( !instance_ )
+      instance_.reset( new Resources() );
+    return instance_.get();
+  }
+  static const sf::Font& GetFont(){ return instance_->default_font; }
+private:
+Resources(){
+  default_font.loadFromFile(resources_dir+"bahnschrift.ttf");
+}
+static std::unique_ptr<Resources> instance_;
+sf::Font default_font{};
+};
+
+std::unique_ptr<Resources> Resources::instance_ = nullptr;
+
+#endif // RESOURCES_H

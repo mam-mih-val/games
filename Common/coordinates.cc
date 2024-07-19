@@ -1,8 +1,8 @@
 
 #include "coordinates.h"
 
-void Point2D::Print() {
-  std::cout << "(x=" << x << ", y=" << y << " ) ";
+void Point2D::Print() const {
+  std::cout << "(x=" << x << ", y=" << y << " ) " << "\n";
 }
 
 void Point2D::Rotate( const Point2D& p, double theta ){
